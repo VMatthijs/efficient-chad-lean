@@ -29,6 +29,51 @@ theorem chad_preserves_primal_unit {Γ : Env .Pr}
       primal (.Un) (eval env (Term.unit : Term .Pr Γ (.Un))).1 := by
   simp [chad, eval, primal]
 
+/-- Array-specific primal-preservation obligations for the extended core
+language.
+
+The obligations are now phrased as genuine array-rule cases: each method receives
+exactly the scalar preservation induction hypotheses for its subterms.  This is
+much smaller than assuming primal preservation for all array source terms at
+once, and it mirrors the way the scalar proof consumes recursive hypotheses. -/
+class CoreArrayPrimalLaws extends CoreArrayEvalRecursorLaws : Prop where
+  chad_preserves_primal_arrayBuild {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (n : Term .Pr Γ .Inte)
+      (body : Term .Pr (.Inte :: Γ) τ)
+      (hn : (eval (primalVal env) (chad n)).1.1 =
+        primal (.Inte : Typ .Pr) (eval env n).1)
+      (hbody : ∀ envI : Val .Pr (.Inte :: Γ),
+        (eval (primalVal envI) (chad body)).1.1 =
+          primal τ (eval envI body).1) :
+    (eval (primalVal env) (chad (Term.arrayBuild n body))).1.1 =
+      primal (.array τ) (eval env (Term.arrayBuild n body)).1
+
+  chad_preserves_primal_arrayIndex {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (xs : Term .Pr Γ (.array τ))
+      (i : Term .Pr Γ .Inte)
+      (hxs : (eval (primalVal env) (chad xs)).1.1 =
+        primal (.array τ) (eval env xs).1)
+      (hi : (eval (primalVal env) (chad i)).1.1 =
+        primal (.Inte : Typ .Pr) (eval env i).1) :
+    (eval (primalVal env) (chad (Term.arrayIndex xs i))).1.1 =
+      primal τ (eval env (Term.arrayIndex xs i)).1
+
+  chad_preserves_primal_arrayFold {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (body : Term .Pr (.prod τ τ :: Γ) τ)
+      (xs : Term .Pr Γ (.array τ))
+      (hbody : ∀ envP : Val .Pr (.prod τ τ :: Γ),
+        (eval (primalVal envP) (chad body)).1.1 =
+          primal τ (eval envP body).1)
+      (hxs : (eval (primalVal env) (chad xs)).1.1 =
+        primal (.array τ) (eval env xs).1) :
+    (eval (primalVal env) (chad (Term.arrayFold body xs))).1.1 =
+      primal τ (eval env (Term.arrayFold body xs)).1
+
+variable [CoreArrayPrimalLaws]
+
 theorem chad_preserves_primal {Γ : Env .Pr} {τ : Typ .Pr}
     (env : Val .Pr Γ) : (e : Term .Pr Γ τ) →
   (eval (primalVal env) (chad e)).1.1 = primal τ (eval env e).1
@@ -108,6 +153,18 @@ theorem chad_preserves_primal {Γ : Env .Pr} {τ : Typ .Pr}
           exact (by
             simpa [chad, eval, primal, primalVal, valprj, h_scrut, h_scrut_val] using
               ((congrArg (fun z => z.1.1) h_sink).trans h_right))
+  | .arrayBuild n body =>
+      CoreArrayPrimalLaws.chad_preserves_primal_arrayBuild env n body
+        (chad_preserves_primal env n)
+        (fun envI => chad_preserves_primal envI body)
+  | .arrayIndex xs i =>
+      CoreArrayPrimalLaws.chad_preserves_primal_arrayIndex env xs i
+        (chad_preserves_primal env xs)
+        (chad_preserves_primal env i)
+  | .arrayFold body xs =>
+      CoreArrayPrimalLaws.chad_preserves_primal_arrayFold env body xs
+        (fun envP => chad_preserves_primal envP body)
+        (chad_preserves_primal env xs)
 
 theorem «chad-preserves-primal» {Γ : Env .Pr} {τ : Typ .Pr}
     (env : Val .Pr Γ) (e : Term .Pr Γ τ) :

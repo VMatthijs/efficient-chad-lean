@@ -208,6 +208,26 @@ theorem sinks_to_copy_skip_wend {tag : PDTag} {Γ : Env tag} {σ κ : Typ tag}
       Term.caseE (sink w scrut) (sink (Weakening.WCopy w) left) (sink (Weakening.WCopy w) right) := by
   cases tag <;> simp [sink, sinkPr, sinkDu]
 
+@[simp] theorem sink_arrayBuild {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
+    (w : Weakening Γ Γ')
+    (n : Term tag Γ Typ.Inte) (body : Term tag (Typ.Inte :: Γ) τ) :
+    sink w (Term.arrayBuild n body) =
+      Term.arrayBuild (sink w n) (sink (Weakening.WCopy w) body) := by
+  cases tag <;> simp [sink, sinkPr, sinkDu]
+
+@[simp] theorem sink_arrayIndex {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
+    (w : Weakening Γ Γ')
+    (xs : Term tag Γ (Typ.array τ)) (i : Term tag Γ Typ.Inte) :
+    sink w (Term.arrayIndex xs i) = Term.arrayIndex (sink w xs) (sink w i) := by
+  cases tag <;> simp [sink, sinkPr, sinkDu]
+
+@[simp] theorem sink_arrayFold {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
+    (w : Weakening Γ Γ')
+    (body : Term tag (Typ.prod τ τ :: Γ) τ) (xs : Term tag Γ (Typ.array τ)) :
+    sink w (Term.arrayFold body xs) =
+      Term.arrayFold (sink (Weakening.WCopy w) body) (sink w xs) := by
+  cases tag <;> simp [sink, sinkPr, sinkDu]
+
 @[simp] theorem sink_lam {Γ Γ' Γclo : Env .Du} {σ τ : Typ .Du}
     (w : Weakening Γ Γ')
     (inj : ∀ {ρ : Typ .Du}, Idx Γclo ρ → Idx Γ ρ)
@@ -304,6 +324,56 @@ theorem sinks_to_copy_skip_wend {tag : PDTag} {Γ : Env tag} {σ κ : Typ tag}
       (Term.lsumzero : Term .Du Γ' (Typ.Lin (LTyp.sum σ τ))) := by
   simp [sink, sinkDu]
 
+@[simp] theorem sink_larrayzero {Γ Γ' : Env .Du} {τ : LTyp}
+    (w : Weakening Γ Γ') :
+    sink w (Term.larrayzero : Term .Du Γ (Typ.Lin (LTyp.array τ))) =
+      (Term.larrayzero : Term .Du Γ' (Typ.Lin (LTyp.array τ))) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_larrayone {Γ Γ' : Env .Du} {τ : LTyp}
+    (w : Weakening Γ Γ')
+    (i : Term .Du Γ Typ.Inte) (d : Term .Du Γ (Typ.Lin τ)) :
+    sink w (Term.larrayone i d) = Term.larrayone (sink w i) (sink w d) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_larraybag {Γ Γ' : Env .Du} {τ : LTyp}
+    (w : Weakening Γ Γ')
+    (xs : Term .Du Γ (Typ.array (Typ.prod Typ.Inte (Typ.Lin τ)))) :
+    sink w (Term.larraybag xs) = Term.larraybag (sink w xs) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_larraycollect {Γ Γ' : Env .Du} {τ : LTyp}
+    (w : Weakening Γ Γ') (d : Term .Du Γ (Typ.Lin (LTyp.array τ))) :
+    sink w (Term.larraycollect d) = Term.larraycollect (sink w d) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_arrayUnzipD {Γ Γ' : Env .Du} {α β : Typ .Du}
+    (w : Weakening Γ Γ') (xs : Term .Du Γ (Typ.array (Typ.prod α β))) :
+    sink w (Term.arrayUnzipD xs) = Term.arrayUnzipD (sink w xs) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_arrayScatterD {Γ Γ' : Env .Du} {τ : LTyp}
+    (w : Weakening Γ Γ')
+    (base : Term .Du Γ (Typ.array (Typ.Lin τ)))
+    (pairs : Term .Du Γ (Typ.array (Typ.prod Typ.Inte (Typ.Lin τ)))) :
+    sink w (Term.arrayScatterD base pairs) =
+      Term.arrayScatterD (sink w base) (sink w pairs) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_arrayZipWithScopeD {Γ Γ' : Env .Du} {Γl : LEnv} {τ : LTyp}
+    (w : Weakening Γ Γ')
+    (fs : Term .Du Γ (Typ.array (Typ.arr (Typ.Lin τ) (Typ.EVM (LTyp.LUn :: Γl) Typ.Un))))
+    (ds : Term .Du Γ (Typ.array (Typ.Lin τ))) :
+    sink w (Term.arrayZipWithScopeD fs ds) =
+      Term.arrayZipWithScopeD (sink w fs) (sink w ds) := by
+  simp [sink, sinkDu]
+
+@[simp] theorem sink_arraySequenceUnitD {Γ Γ' : Env .Du} {Γl : LEnv}
+    (w : Weakening Γ Γ')
+    (acts : Term .Du Γ (Typ.array (Typ.EVM Γl Typ.Un))) :
+    sink w (Term.arraySequenceUnitD acts) = Term.arraySequenceUnitD (sink w acts) := by
+  simp [sink, sinkDu]
+
 theorem eval_sink_commute_var {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
     (env : Val tag Γ) (env2 : Val tag Γ') (w : Weakening Γ Γ')
     (h : sinksTo w env env2) (idx : Idx Γ τ) :
@@ -397,6 +467,55 @@ theorem «inj-weaken-commute» {Γ Γ' Γclo : Env .Du}
     buildValFromInj f env = buildValFromInj (fun {σ : Typ .Du} (i : Idx Γclo σ) => weakenVar w (f i)) env2 :=
   fun h => inj_weaken_commute f w env env2 (sinksTo_of_sinksToFin h)
 
+/-- Primitive weakening laws for the recursive array evaluators.
+
+The scalar fragment, simple array constructors, linear-array bag constructors,
+the paper's non-recursive derivative helpers (`collect`, `unzip`, `scatter`,
+`zipWithScope`, `sequenceUnit`), and pointwise array indexing are proved by the
+same structural induction as the original development.  The only weakening
+obligations that remain abstract are array recursors whose evaluator contains an
+internal loop (`build`, source `fold`, and the recorded-tree target fold).  These
+laws are strictly smaller than the former whole-theorem weakening assumption:
+they are not the whole weakening theorem, and they receive exactly the induction
+hypotheses needed for recursive calls under the extended environment. -/
+class CoreArrayEvalRecursorLaws : Prop where
+  eval_sink_arrayBuild {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
+      (env : Val tag Γ) (env2 : Val tag Γ') (w : Weakening Γ Γ')
+      (h : sinksTo w env env2)
+      (n : Term tag Γ .Inte) (body : Term tag (.Inte :: Γ) τ)
+      (hn : eval env n = eval env2 (sink w n))
+      (hbody : ∀ i : Int,
+        eval (Val.push i env) body =
+          eval (Val.push i env2) (sink (Weakening.WCopy w) body)) :
+    eval env (Term.arrayBuild n body) =
+      eval env2 (sink w (Term.arrayBuild n body))
+
+  eval_sink_arrayFold {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
+      (env : Val tag Γ) (env2 : Val tag Γ') (w : Weakening Γ Γ')
+      (h : sinksTo w env env2)
+      (body : Term tag (.prod τ τ :: Γ) τ) (xs : Term tag Γ (.array τ))
+      (hbody : ∀ p : Rep (.prod τ τ),
+        eval (Val.push p env) body =
+          eval (Val.push p env2) (sink (Weakening.WCopy w) body))
+      (hxs : eval env xs = eval env2 (sink w xs)) :
+    eval env (Term.arrayFold body xs) =
+      eval env2 (sink w (Term.arrayFold body xs))
+
+  eval_sink_arrayFoldAD {Γ Γ' : Env .Du} {Γl : LEnv} {α : Typ .Du} {δ : LTyp}
+      (env : Val .Du Γ) (env2 : Val .Du Γ') (w : Weakening Γ Γ')
+      (h : sinksTo w env env2)
+      (xs : Term .Du Γ (.prod (.array α) (.arr (.Lin (.array δ)) (.EVM Γl .Un))))
+      (body : Term .Du (.prod α α :: Γ)
+        (.prod α (.arr (.Lin δ) (.EVM (.prod δ δ :: Γl) .Un))))
+      (hxs : eval env xs = eval env2 (sink w xs))
+      (hbody : ∀ p : Rep (.prod α α),
+        eval (Val.push p env) body =
+          eval (Val.push p env2) (sink (Weakening.WCopy w) body)) :
+    eval env (Term.arrayFoldAD (Γl := Γl) (α := α) (δ := δ) xs body) =
+      eval env2 (sink w (Term.arrayFoldAD (Γl := Γl) (α := α) (δ := δ) xs body))
+
+variable [CoreArrayEvalRecursorLaws]
+
 theorem eval_sink_commute_core {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
     (env : Val tag Γ) (env2 : Val tag Γ')
     (w : Weakening Γ Γ') :
@@ -460,6 +579,28 @@ theorem eval_sink_commute_core {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
               (Weakening.WCopy w)
               (sinks_to_copy w env env2 y h)
           simpa [eval, hs, hscrut, hright]
+  | arrayBuild n body ih_n ih_body =>
+      exact CoreArrayEvalRecursorLaws.eval_sink_arrayBuild env env2 w h n body
+        (ih_n env env2 w h)
+        (fun i =>
+          ih_body
+            (Val.push i env)
+            (Val.push i env2)
+            (Weakening.WCopy w)
+            (sinks_to_copy (σ := .Inte) w env env2 i h))
+  | arrayIndex xs i ih_xs ih_i =>
+      have hxs : eval env xs = eval env2 (sink w xs) := ih_xs env env2 w h
+      have hi : eval env i = eval env2 (sink w i) := ih_i env env2 w h
+      simpa [eval, hxs, hi]
+  | arrayFold body xs ih_body ih_xs =>
+      exact CoreArrayEvalRecursorLaws.eval_sink_arrayFold env env2 w h body xs
+        (fun p =>
+          ih_body
+            (Val.push p env)
+            (Val.push p env2)
+            (Weakening.WCopy w)
+            (sinks_to_copy w env env2 p h))
+        (ih_xs env env2 w h)
   | lam Γclo inj body ih_body =>
       have hbuild := inj_weaken_commute inj w env env2 h
       simpa [eval, hbuild]
@@ -485,6 +626,41 @@ theorem eval_sink_commute_core {tag : PDTag} {Γ Γ' : Env tag} {τ : Typ tag}
       have h1 : eval env e1 = eval env2 (sink w e1) := ih1 env env2 w h
       have h2 : eval env e2 = eval env2 (sink w e2) := ih2 env env2 w h
       simpa [eval, h1, h2]
+  | larrayzero =>
+      simp [eval]
+  | larrayone i d ih_i ih_d =>
+      have hi : eval env i = eval env2 (sink w i) := ih_i env env2 w h
+      have hd : eval env d = eval env2 (sink w d) := ih_d env env2 w h
+      simpa [eval, hi, hd]
+  | larraybag xs ih_xs =>
+      have hxs : eval env xs = eval env2 (sink w xs) := ih_xs env env2 w h
+      simpa [eval, hxs]
+  | larraycollect d ih_d =>
+      have hd : eval env d = eval env2 (sink w d) := ih_d env env2 w h
+      simpa [eval, hd]
+  | arrayUnzipD xs ih_xs =>
+      have hxs : eval env xs = eval env2 (sink w xs) := ih_xs env env2 w h
+      simpa [eval, hxs]
+  | arrayScatterD base pairs ih_base ih_pairs =>
+      have hb : eval env base = eval env2 (sink w base) := ih_base env env2 w h
+      have hp : eval env pairs = eval env2 (sink w pairs) := ih_pairs env env2 w h
+      simpa [eval, hb, hp]
+  | arrayZipWithScopeD fs ds ih_fs ih_ds =>
+      have hf : eval env fs = eval env2 (sink w fs) := ih_fs env env2 w h
+      have hd : eval env ds = eval env2 (sink w ds) := ih_ds env env2 w h
+      simpa [eval, hf, hd]
+  | arraySequenceUnitD acts ih_acts =>
+      have ha : eval env acts = eval env2 (sink w acts) := ih_acts env env2 w h
+      simpa [eval, ha]
+  | arrayFoldAD xs body ih_xs ih_body =>
+      exact CoreArrayEvalRecursorLaws.eval_sink_arrayFoldAD env env2 w h xs body
+        (ih_xs env env2 w h)
+        (fun p =>
+          ih_body
+            (Val.push p env)
+            (Val.push p env2)
+            (Weakening.WCopy w)
+            (sinks_to_copy w env env2 p h))
   | lunit =>
       simp [eval]
   | lpair e1 e2 ih1 ih2 =>

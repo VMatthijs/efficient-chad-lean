@@ -4,7 +4,7 @@ namespace EfficientChad
 
 noncomputable section
 
-universe u
+universe u v
 
 inductive PDTag : Type where
   | Pr : PDTag
@@ -17,6 +17,7 @@ inductive Typ : PDTag → Type where
   | R {tag : PDTag} : Typ tag
   | prod {tag : PDTag} : Typ tag → Typ tag → Typ tag
   | sum {tag : PDTag} : Typ tag → Typ tag → Typ tag
+  | array {tag : PDTag} : Typ tag → Typ tag
   | arr : Typ .Du → Typ .Du → Typ .Du
   | EVM : LEnv → Typ .Du → Typ .Du
   | Lin : LTyp → Typ .Du
@@ -26,6 +27,9 @@ abbrev «_:*_» {tag : PDTag} (σ τ : Typ tag) : Typ tag :=
 
 abbrev «_:+_» {tag : PDTag} (σ τ : Typ tag) : Typ tag :=
   Typ.sum σ τ
+
+abbrev ArrayT {tag : PDTag} (τ : Typ tag) : Typ tag :=
+  Typ.array τ
 
 abbrev «_:->_» (σ τ : Typ .Du) : Typ .Du :=
   Typ.arr σ τ
@@ -38,6 +42,7 @@ abbrev Rep : {tag : PDTag} → Typ tag → Type
   | _, .R => Float
   | _, .prod σ τ => Rep σ × Rep τ
   | _, .sum σ τ => Sum (Rep σ) (Rep τ)
+  | _, .array τ => List (Rep τ)
   | _, .arr σ τ => Rep σ → Rep τ × Int
   | _, .EVM Γ τ => LACM Γ (Rep τ)
   | _, .Lin τ => LinRep τ
@@ -48,6 +53,7 @@ def dutAll : {tag : PDTag} → Typ tag → Typ .Du
   | _, .R => .R
   | _, .prod σ τ => .prod (dutAll σ) (dutAll τ)
   | _, .sum σ τ => .sum (dutAll σ) (dutAll τ)
+  | _, .array τ => .array (dutAll τ)
   | .Du, .arr σ τ => .arr σ τ
   | .Du, .EVM Γ τ => .EVM Γ τ
   | .Du, .Lin τ => .Lin τ
@@ -143,6 +149,12 @@ inductive Term : (tag : PDTag) → Env tag → Typ tag → Type where
       Term tag Γ τ → Term tag Γ (.sum σ τ)
   | caseE {tag : PDTag} {Γ : Env tag} {σ τ ρ : Typ tag} :
       Term tag Γ (.sum σ τ) → Term tag (σ :: Γ) ρ → Term tag (τ :: Γ) ρ → Term tag Γ ρ
+  | arrayBuild {tag : PDTag} {Γ : Env tag} {τ : Typ tag} :
+      Term tag Γ .Inte → Term tag (.Inte :: Γ) τ → Term tag Γ (.array τ)
+  | arrayIndex {tag : PDTag} {Γ : Env tag} {τ : Typ tag} :
+      Term tag Γ (.array τ) → Term tag Γ .Inte → Term tag Γ τ
+  | arrayFold {tag : PDTag} {Γ : Env tag} {τ : Typ tag} :
+      Term tag (.prod τ τ :: Γ) τ → Term tag Γ (.array τ) → Term tag Γ τ
   | lam {Γ : Env .Du} {σ τ : Typ .Du} :
       (Γclo : Env .Du) →
       (∀ {ρ : Typ .Du}, Idx Γclo ρ → Idx Γ ρ) →
@@ -159,6 +171,30 @@ inductive Term : (tag : PDTag) → Env tag → Typ tag → Type where
       Idx Γl τ → Term .Du Γ (.Lin τ) → Term .Du Γ (.EVM Γl .Un)
   | scopeevm {Γ : Env .Du} {Γl : LEnv} {τ : LTyp} {σ : Typ .Du} :
       Term .Du Γ (.Lin τ) → Term .Du Γ (.EVM (τ :: Γl) σ) → Term .Du Γ (.EVM Γl (.prod (.Lin τ) σ))
+  | larrayzero {Γ : Env .Du} {τ : LTyp} :
+      Term .Du Γ (.Lin (.array τ))
+  | larrayone {Γ : Env .Du} {τ : LTyp} :
+      Term .Du Γ .Inte → Term .Du Γ (.Lin τ) → Term .Du Γ (.Lin (.array τ))
+  | larraybag {Γ : Env .Du} {τ : LTyp} :
+      Term .Du Γ (.array (.prod .Inte (.Lin τ))) → Term .Du Γ (.Lin (.array τ))
+  | larraycollect {Γ : Env .Du} {τ : LTyp} :
+      Term .Du Γ (.Lin (.array τ)) → Term .Du Γ (.array (.prod .Inte (.Lin τ)))
+  | arrayUnzipD {Γ : Env .Du} {α β : Typ .Du} :
+      Term .Du Γ (.array (.prod α β)) → Term .Du Γ (.prod (.array α) (.array β))
+  | arrayScatterD {Γ : Env .Du} {τ : LTyp} :
+      Term .Du Γ (.array (.Lin τ)) →
+      Term .Du Γ (.array (.prod .Inte (.Lin τ))) →
+      Term .Du Γ (.array (.Lin τ))
+  | arrayZipWithScopeD {Γ : Env .Du} {Γl : LEnv} {τ : LTyp} :
+      Term .Du Γ (.array (.arr (.Lin τ) (.EVM (.LUn :: Γl) .Un))) →
+      Term .Du Γ (.array (.Lin τ)) →
+      Term .Du Γ (.array (.EVM Γl .Un))
+  | arraySequenceUnitD {Γ : Env .Du} {Γl : LEnv} :
+      Term .Du Γ (.array (.EVM Γl .Un)) → Term .Du Γ (.EVM Γl .Un)
+  | arrayFoldAD {Γ : Env .Du} {Γl : LEnv} {α : Typ .Du} {δ : LTyp} :
+      Term .Du Γ (.prod (.array α) (.arr (.Lin (.array δ)) (.EVM Γl .Un))) →
+      Term .Du (.prod α α :: Γ) (.prod α (.arr (.Lin δ) (.EVM (.prod δ δ :: Γl) .Un))) →
+      Term .Du Γ (.prod α (.arr (.Lin δ) (.EVM Γl .Un)))
   | lunit {Γ : Env .Du} : Term .Du Γ (.Lin .LUn)
   | lpair {Γ : Env .Du} {σ τ : LTyp} :
       Term .Du Γ (.Lin σ) → Term .Du Γ (.Lin τ) → Term .Du Γ (.Lin (.prod σ τ))
@@ -196,6 +232,18 @@ def «case'» {tag : PDTag} {Γ : Env tag} {σ τ ρ : Typ tag}
     (left : Term tag (σ :: Γ) ρ)
     (right : Term tag (τ :: Γ) ρ) : Term tag Γ ρ :=
   Term.caseE scrut left right
+
+def arrayBuildTerm {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
+    (n : Term tag Γ .Inte) (body : Term tag (.Inte :: Γ) τ) : Term tag Γ (.array τ) :=
+  Term.arrayBuild n body
+
+def arrayIndexTerm {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
+    (xs : Term tag Γ (.array τ)) (i : Term tag Γ .Inte) : Term tag Γ τ :=
+  Term.arrayIndex xs i
+
+def arrayFoldTerm {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
+    (body : Term tag (.prod τ τ :: Γ) τ) (xs : Term tag Γ (.array τ)) : Term tag Γ τ :=
+  Term.arrayFold body xs
 
 def «lfst'» {Γ : Env .Du} {σ τ : LTyp}
     (e : Term .Du Γ (.Lin (.prod σ τ))) : Term .Du Γ (.Lin σ) :=
@@ -240,6 +288,9 @@ def sinkPr {Γ Γ' : Env .Pr}
   | _, .inl e => .inl (sinkPr w e)
   | _, .inr e => .inr (sinkPr w e)
   | _, .caseE e₁ e₂ e₃ => .caseE (sinkPr w e₁) (sinkPr (.WCopy w) e₂) (sinkPr (.WCopy w) e₃)
+  | _, .arrayBuild n body => .arrayBuild (sinkPr w n) (sinkPr (.WCopy w) body)
+  | _, .arrayIndex xs i => .arrayIndex (sinkPr w xs) (sinkPr w i)
+  | _, .arrayFold body xs => .arrayFold (sinkPr (.WCopy w) body) (sinkPr w xs)
 
 def sinkDu {Γ Γ' : Env .Du}
     (w : Weakening Γ Γ') : {τ : Typ .Du} → Term .Du Γ τ → Term .Du Γ' τ
@@ -253,6 +304,9 @@ def sinkDu {Γ Γ' : Env .Du}
   | _, .inl e => .inl (sinkDu w e)
   | _, .inr e => .inr (sinkDu w e)
   | _, .caseE e₁ e₂ e₃ => .caseE (sinkDu w e₁) (sinkDu (.WCopy w) e₂) (sinkDu (.WCopy w) e₃)
+  | _, .arrayBuild n body => .arrayBuild (sinkDu w n) (sinkDu (.WCopy w) body)
+  | _, .arrayIndex xs i => .arrayIndex (sinkDu w xs) (sinkDu w i)
+  | _, .arrayFold body xs => .arrayFold (sinkDu (.WCopy w) body) (sinkDu w xs)
   | _, .lam Γclo inj body => .lam Γclo (fun {ρ : Typ .Du} (i : Idx Γclo ρ) => weakenVar w (inj i)) body
   | _, .app e₁ e₂ => .app (sinkDu w e₁) (sinkDu w e₂)
   | _, .pureevm e => .pureevm (sinkDu w e)
@@ -260,6 +314,15 @@ def sinkDu {Γ Γ' : Env .Du}
   | _, .runevm e₁ e₂ => .runevm (sinkDu w e₁) (sinkDu w e₂)
   | _, .addevm i e => .addevm i (sinkDu w e)
   | _, .scopeevm e₁ e₂ => .scopeevm (sinkDu w e₁) (sinkDu w e₂)
+  | _, .larrayzero => .larrayzero
+  | _, .larrayone i d => .larrayone (sinkDu w i) (sinkDu w d)
+  | _, .larraybag xs => .larraybag (sinkDu w xs)
+  | _, .larraycollect d => .larraycollect (sinkDu w d)
+  | _, .arrayUnzipD xs => .arrayUnzipD (sinkDu w xs)
+  | _, .arrayScatterD base pairs => .arrayScatterD (sinkDu w base) (sinkDu w pairs)
+  | _, .arrayZipWithScopeD fs ds => .arrayZipWithScopeD (sinkDu w fs) (sinkDu w ds)
+  | _, .arraySequenceUnitD acts => .arraySequenceUnitD (sinkDu w acts)
+  | _, .arrayFoldAD xs body => .arrayFoldAD (sinkDu w xs) (sinkDu (.WCopy w) body)
   | _, .lunit => .lunit
   | _, .lpair e₁ e₂ => .lpair (sinkDu w e₁) (sinkDu w e₂)
   | _, .lfstE e => .lfstE (sinkDu w e)
@@ -342,6 +405,7 @@ def D2τPrimeAll : {tag : PDTag} → Typ tag → LTyp
   | _, .R => .LR
   | _, .prod σ τ => .prod (D2τPrimeAll σ) (D2τPrimeAll τ)
   | _, .sum σ τ => .sum (D2τPrimeAll σ) (D2τPrimeAll τ)
+  | _, .array τ => .array (D2τPrimeAll τ)
   | .Du, .arr _ _ => .LUn
   | .Du, .EVM _ _ => .LUn
   | .Du, .Lin τ => τ
@@ -370,6 +434,8 @@ def primal : (τ : Typ .Pr) → Rep τ → Rep (D1τ τ)
       simpa [D1τ, dut, dutAll, Rep] using (Sum.inl (primal σ x) : Sum (Rep (D1τ σ)) (Rep (D1τ τ)))
   | .sum σ τ, Sum.inr y => by
       simpa [D1τ, dut, dutAll, Rep] using (Sum.inr (primal τ y) : Sum (Rep (D1τ σ)) (Rep (D1τ τ)))
+  | .array τ, xs => by
+      simpa [D1τ, dut, dutAll, Rep] using (xs.map (fun x => primal τ x) : List (Rep (D1τ τ)))
 
 def duPrim {σ τ : Typ .Pr} (op : Primop .Pr σ τ) : Primop .Du (dut σ) (dut τ) :=
   match op with
@@ -465,6 +531,109 @@ def buildValFromInj {tag : PDTag} {Γ Γclo : Env tag}
       .push (valprj env (inj .Z))
         (buildValFromInj (fun {ρ : Typ tag} (i : Idx Γrest ρ) => inj (.S i)) env)
 
+
+/-- Total default values used only to make the list-backed array semantics total.
+The paper assumes well-formed array programs, so the default branches correspond to
+out-of-bounds indexing and empty folds. -/
+def defaultRep : {tag : PDTag} → (τ : Typ tag) → Rep τ
+  | _, .Un => ()
+  | _, .Inte => 0
+  | _, .R => 0.0
+  | _, .prod σ τ => (defaultRep σ, defaultRep τ)
+  | _, .sum σ _ => Sum.inl (defaultRep σ)
+  | _, .array _ => []
+  | .Du, .arr _ τ => fun _ => (defaultRep τ, one)
+  | .Du, .EVM _ τ => LACM.pure (defaultRep τ)
+  | .Du, .Lin τ => (zerov τ).1
+
+def arrayListGetD {α : Type u} : List α → Nat → α → α
+  | [], _, d => d
+  | x :: _, 0, _ => x
+  | _ :: xs, Nat.succ n, d => arrayListGetD xs n d
+
+def arrayIndexCore {α : Type u} (xs : List α) (i : Int) (default : α) : α :=
+  arrayListGetD xs i.toNat default
+
+def arrayBuildCoreFrom {α : Type u} (start : Nat) : Nat → (Int → α) → List α
+  | 0, _ => []
+  | Nat.succ n, f => f (Int.ofNat start) :: arrayBuildCoreFrom (Nat.succ start) n f
+
+def arrayBuildCoreAux {α : Type u} (n : Nat) (f : Int → α) : List α :=
+  arrayBuildCoreFrom 0 n f
+
+def arrayBuildCore {α : Type u} (n : Int) (f : Int → α) : List α :=
+  arrayBuildCoreAux n.toNat f
+
+def arrayUpdatePlus {α : Type u} (plus : α → α → α) : List α → Nat → α → List α
+  | [], _, _ => []
+  | x :: xs, 0, v => plus x v :: xs
+  | x :: xs, Nat.succ n, v => x :: arrayUpdatePlus plus xs n v
+
+def arrayScatterCore {α : Type u} (plus : α → α → α)
+    (base : List α) (pairs : List (Int × α)) : List α :=
+  pairs.foldl (fun acc p => arrayUpdatePlus plus acc p.1.toNat p.2) base
+
+def arrayZipWithCore {α : Type u} {β : Type v} {γ : Type u}
+    (f : α → β → γ) : List α → List β → List γ
+  | [], _ => []
+  | _, [] => []
+  | x :: xs, y :: ys => f x y :: arrayZipWithCore f xs ys
+
+def arrayUnzipCore {α : Type u} {β : Type v} : List (α × β) → List α × List β
+  | [] => ([], [])
+  | (x, y) :: rest =>
+      let r := arrayUnzipCore rest
+      (x :: r.1, y :: r.2)
+
+def arrayEnumerateFromCore {α : Type u} : Nat → List α → List (Int × α)
+  | _, [] => []
+  | n, x :: xs => (Int.ofNat n, x) :: arrayEnumerateFromCore (Nat.succ n) xs
+
+def arrayEnumerateCore {α : Type u} (xs : List α) : List (Int × α) :=
+  arrayEnumerateFromCore 0 xs
+
+def lacmSequenceUnit {Γ : LEnv} : List (LACM Γ Unit) → LACM Γ Unit
+  | [] => LACM.pure ()
+  | m :: ms => LACM.bind m (fun _ => (lacmSequenceUnit ms, one))
+
+def lacmScopeDrop {Γ : LEnv} {τ : LTyp} {α : Type u}
+    (zero : LinRep τ) (mcall : LACM (τ :: Γ) α × Int) : LACM Γ Unit :=
+  fun env =>
+    let r := LACM.scope zero mcall.1 env
+    ((), r.2.1, one + mcall.2 + r.2.2)
+
+def linFstD {σ τ : LTyp} (x : LinRep (.prod σ τ)) : LinRep σ :=
+  match x with
+  | none => (zerov σ).1
+  | some xy => xy.1
+
+def linSndD {σ τ : LTyp} (x : LinRep (.prod σ τ)) : LinRep τ :=
+  match x with
+  | none => (zerov τ).1
+  | some xy => xy.2
+
+inductive FoldTree (α : Type u) (β : Type v) : Type (max u v) where
+  | leaf : α → FoldTree α β
+  | node : FoldTree α β → α → β → FoldTree α β → FoldTree α β
+  deriving Repr
+
+namespace FoldTree
+
+def getA {α : Type u} {β : Type v} : FoldTree α β → α
+  | .leaf x => x
+  | .node _ x _ _ => x
+
+def unTree {Γ : LEnv} {δ : Type u} {α : Type v} {β : Type u}
+    (split : δ → β → LACM Γ (δ × δ)) : δ → FoldTree α β → LACM Γ (List δ → List δ)
+  | d, .leaf _ => fun env => ((fun xs => d :: xs), env, one)
+  | d, .node t₁ _ f t₂ => fun env =>
+      let r := split d f env
+      let r₁ := unTree split r.1.1 t₁ r.2.1
+      let r₂ := unTree split r.1.2 t₂ r₁.2.1
+      ((fun xs => r₁.1 (r₂.1 xs)), r₂.2.1, one + r.2.2 + r₁.2.2 + r₂.2.2)
+
+end FoldTree
+
 def eval {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
     (env : Val tag Γ) (tm : Term tag Γ τ) : Rep τ × Int :=
   match tm with
@@ -502,6 +671,27 @@ def eval {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
       | Sum.inr y =>
           let r3 := eval (.push y env) e3
           (r3.1, one + r.2 + r3.2)
+  | .arrayBuild (τ := τ) n body =>
+      let rn := eval env n
+      let idxs := List.range rn.1.toNat
+      let rs := idxs.map (fun j => eval (.push (Int.ofNat j) env) body)
+      let vals := rs.map (fun r => r.1)
+      let cbody := rs.foldl (fun c r => one + c + r.2) one
+      (vals, one + rn.2 + cbody)
+  | .arrayIndex (τ := τ) xs i =>
+      let rxs := eval env xs
+      let ri := eval env i
+      (arrayIndexCore rxs.1 ri.1 (defaultRep τ), one + rxs.2 + ri.2)
+  | .arrayFold (τ := τ) body xs =>
+      let rxs := eval env xs
+      match rxs.1 with
+      | [] => (defaultRep τ, one + rxs.2 + one)
+      | x :: rest =>
+          let step := fun (state : Rep τ × Int) (y : Rep τ) =>
+            let r := eval (.push (state.1, y) env) body
+            (r.1, one + state.2 + r.2)
+          let rf := rest.foldl step (x, one)
+          (rf.1, one + rxs.2 + rf.2)
   | .lam Γclo inj body =>
       ((fun x => eval (.push x (buildValFromInj inj env)) body), one + intLength Γclo)
   | .app e1 e2 =>
@@ -528,6 +718,63 @@ def eval {tag : PDTag} {Γ : Env tag} {τ : Typ tag}
       let r1 := eval env e1
       let r2 := eval env e2
       (LACM.scope r1.1 r2.1, one + r1.2 + r2.2)
+  | .larrayzero => (Bag.empty, one)
+  | .larrayone i d =>
+      let ri := eval env i
+      let rd := eval env d
+      (Bag.one (ri.1, rd.1), one + ri.2 + rd.2)
+  | .larraybag xs =>
+      let rxs := eval env xs
+      (Bag.array rxs.1, one + rxs.2 + intLength rxs.1)
+  | .larraycollect d =>
+      let rd := eval env d
+      (Bag.collect rd.1, one + rd.2 + Bag.collectCost rd.1)
+  | .arrayUnzipD xs =>
+      let rxs := eval env xs
+      let rz := arrayUnzipCore rxs.1
+      (rz, one + rxs.2 + intLength rxs.1)
+  | .arrayScatterD (τ := τ) base pairs =>
+      let rb := eval env base
+      let rp := eval env pairs
+      (arrayScatterCore (fun x y => (plusv τ x y).1) rb.1 rp.1, one + rb.2 + rp.2 + intLength rb.1 + intLength rp.1)
+  | .arrayZipWithScopeD (Γl := Γl) fs ds =>
+      let rfs := eval env fs
+      let rds := eval env ds
+      let actions := arrayZipWithCore
+        (fun f d => lacmScopeDrop (Γ := Γl) (τ := .LUn) (zerov .LUn).1 (f d))
+        rfs.1 rds.1
+      (actions, one + rfs.2 + rds.2 + intLength rfs.1 + intLength rds.1)
+  | .arraySequenceUnitD acts =>
+      let racts := eval env acts
+      (lacmSequenceUnit racts.1, one + racts.2 + intLength racts.1)
+  | .arrayFoldAD (Γl := Γl) (α := α) (δ := δ) xs body =>
+      let rxs := eval env xs
+      let mkLeaf (x : Rep α) : FoldTree (Rep α) (LinRep δ → LACM (.prod δ δ :: Γl) Unit × Int) :=
+        FoldTree.leaf x
+      let stepTree := fun
+          (state : FoldTree (Rep α) (LinRep δ → LACM (.prod δ δ :: Γl) Unit × Int) × Int)
+          (y : Rep α) =>
+            let t := state.1
+            let rb := eval (.push (FoldTree.getA t, y) env) body
+            let t' := FoldTree.node t rb.1.1 rb.1.2 (FoldTree.leaf y)
+            (t', one + state.2 + rb.2)
+      match rxs.1.1 with
+      | [] =>
+          let bp := fun _ => (LACM.pure (), one)
+          ((defaultRep α, bp), one + rxs.2 + one)
+      | x :: rest =>
+          let treeRes := rest.foldl stepTree (mkLeaf x, one)
+          let tree := treeRes.1
+          let split := fun d' f =>
+            fun denv =>
+              let call := f d'
+              let scopedRun := LACM.scope (zerov (.prod δ δ)).1 call.1 denv
+              let pairCtg := scopedRun.1.1
+              ((linFstD pairCtg, linSndD pairCtg), scopedRun.2.1, one + call.2 + scopedRun.2.2)
+          let bp := fun d =>
+            (LACM.bind (FoldTree.unTree split d tree)
+              (fun lf => rxs.1.2 (Bag.array (arrayEnumerateCore (lf [])))), one)
+          ((FoldTree.getA tree, bp), one + rxs.2 + treeRes.2)
   | .lunit => ((), one)
   | .lpair e1 e2 =>
       let r1 := eval env e1
@@ -590,6 +837,8 @@ def zerot {Γ : Env .Du} : (τ : Typ .Pr) → Term .Du Γ (D2τ τ)
       simpa [D2τ, D2τPrime, D2τPrimeAll] using (Term.lpairzero : Term .Du Γ (.Lin (.prod (D2τPrime σ) (D2τPrime τ))))
   | .sum σ τ => by
       simpa [D2τ, D2τPrime, D2τPrimeAll] using (Term.lsumzero : Term .Du Γ (.Lin (.sum (D2τPrime σ) (D2τPrime τ))))
+  | .array τ => by
+      simpa [D2τ, D2τPrime, D2τPrimeAll] using (Term.larrayzero : Term .Du Γ (.Lin (.array (D2τPrime τ))))
 
 def d1pairTerm {Γ : Env .Du} {σ τ : Typ .Pr}
     (a : Term .Du Γ (D1τ σ)) (b : Term .Du Γ (D1τ τ)) :
@@ -715,6 +964,47 @@ def chad {Γ : Env .Pr} {τ : Typ .Pr}
                   (.scopeevm (zerot τ) (.app (.sndE (.var (.S .Z))) (.var .Z)))
                   (lamwith [finTwo]
                     (.app (.sndE (.var (.S .Z))) (d2linrTerm (σ := σ) (τ := τ) (.fstE (.var .Z))))))))))
+  /- Paper array-build rule, expanded rather than hidden behind a monolithic
+     AD primitive:
+       let (n, _) = D[n]
+       let a      = build n (i. D[body])
+       let (a₁,a₂)= unzip a
+       (a₁, λd. let pairs = collect d;
+                let d₂    = scatter (build n (i. zero)) pairs;
+                sequence (zipWith (λf d'. scope zero (f d')) a₂ d₂)) -/
+  | .arrayBuild (τ := τ) n body =>
+      .letE (chad n)
+        (.letE
+          (.arrayBuild (.fstE (.var .Z))
+            (sink (Weakening.WCopy (Weakening.WSkip Weakening.WEnd)) (chad body)))
+          (.letE (.arrayUnzipD (.var .Z))
+            (.pair (.fstE (.var .Z))
+              (lamwith (α := D2τ (.array τ)) [finZero, finTwo]
+                (.letE (.larraycollect (.var .Z))
+                  (.letE
+                    (.arrayScatterD
+                      (.arrayBuild (.fstE (.var (.S (.S (.S .Z))))) (zerot τ))
+                      (.var .Z))
+                    (.letE
+                      (.arrayZipWithScopeD
+                        (.sndE (.var (.S (.S (.S .Z)))))
+                        (.var .Z))
+                      (.arraySequenceUnitD (.var .Z)))))))))
+  /- Paper indexing rule:
+       let (xs₁,xs₂) = D[xs]
+       let (i,_)     = D[i]
+       (xs₁ ! i, λd. xs₂ (BagOne (i,d))) -/
+  | .arrayIndex (τ := τ) xs i =>
+      .letE (.pair (chad xs) (chad i))
+        (.pair (.arrayIndex (.fstE (.fstE (.var .Z))) (.fstE (.sndE (.var .Z))))
+          (lamwith (α := D2τ τ) [finZero]
+            (.app (.sndE (.fstE (.var (.S .Z))))
+              (.larrayone (.fstE (.sndE (.var (.S .Z)))) (.var .Z)))))
+  /- The paper's fold rule records the reduction tree in the primal pass and
+     traverses it with `unTree` in reverse.  The evaluator of `arrayFoldAD`
+     above implements precisely that target-level recorded fold. -/
+  | .arrayFold body xs =>
+      .arrayFoldAD (chad xs) (chad body)
 
 def phi : (τ : LTyp) → LinRep τ → Int
   | .LUn, _ => one
@@ -724,6 +1014,7 @@ def phi : (τ : LTyp) → LinRep τ → Int
   | .sum _ _, none => one
   | .sum σ _, some (Sum.inl x) => one + phi σ x
   | .sum _ τ, some (Sum.inr y) => one + phi τ y
+  | .array _, b => Bag.collectCost b
 
 def «φ» (τ : LTyp) (x : LinRep τ) : Int :=
   phi τ x
@@ -743,6 +1034,7 @@ def size : (τ : LTyp) → LinRep τ → Nat
   | .sum _ _, none => 1
   | .sum σ _, some (Sum.inl x) => 1 + size σ x
   | .sum _ τ, some (Sum.inr y) => 1 + size τ y
+  | .array _, b => Bag.size b
 
 def zeroEnvTerm {Γ' : Env .Du} : (Γ : Env .Pr) → Term .Du Γ' (D2Γtup Γ)
   | [] => .unit
