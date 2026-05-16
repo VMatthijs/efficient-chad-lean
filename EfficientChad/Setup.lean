@@ -33,6 +33,20 @@ def weakenTrans {tag : PDTag} {Γ Γ' : Env tag} {σ : Typ tag}
   | .Z => .var .Z
   | .S i => sink1 (f i)
 
+theorem bag_collectCost_ge_one {α : Type u} (b : Bag α) : (1 : Int) ≤ Bag.collectCost b := by
+  induction b with
+  | empty =>
+      simp [Bag.collectCost, one]
+  | one x =>
+      simp [Bag.collectCost, one]
+  | plus xs ys ihx ihy =>
+      simp [Bag.collectCost, one] at ihx ihy ⊢
+      omega
+  | array xs =>
+      have h : (0 : Int) ≤ Int.ofNat xs.length := Int.ofNat_nonneg xs.length
+      simp [Bag.collectCost, intLength, one]
+      omega
+
 theorem phi_ge_one (τ : LTyp) (x : LinRep τ) : (1 : Int) ≤ phi τ x := by
   induction τ with
   | LUn =>
@@ -62,6 +76,8 @@ theorem phi_ge_one (τ : LTyp) (x : LinRep τ) : (1 : Int) ≤ phi τ x := by
           | inr xτ =>
               have hτ := ihτ xτ
               simp [phi, one] <;> omega
+  | array τ ih =>
+      simpa [phi] using bag_collectCost_ge_one x
 
 theorem phi_positive (τ : LTyp) (x : LinRep τ) : (0 : Int) ≤ phi τ x := by
   have h := phi_ge_one τ x
@@ -111,7 +127,7 @@ theorem eval_d1prim {σ τ : Typ .Pr} (op : Primop .Pr σ τ) (x : Rep σ) :
 
 theorem zero_small_phi {Γ : Env .Du} (env : Val .Du Γ) (τ : Typ .Pr) :
   phi (D2τPrime τ) (eval env (zerot τ)).1 = 1 := by
-  cases τ <;> simp [zerot, eval, evalprim, D2τPrime, D2τPrimeAll, phi, one]
+  cases τ <;> simp [zerot, eval, evalprim, D2τPrime, D2τPrimeAll, phi, Bag.collectCost, one]
 
 theorem zero_small_cost {Γ : Env .Du} (env : Val .Du Γ) (τ : Typ .Pr) :
   (eval env (zerot τ)).2 ≤ 2 := by
@@ -123,7 +139,7 @@ def «zerov'» {Γ : Env .Du} (τ : Typ .Pr) (env : Val .Du Γ) :
 
 theorem zero_small_phi_v (τ : Typ .Pr) :
   phi (D2τPrime τ) (zerov (D2τPrime τ)).1 = 1 := by
-  cases τ <;> simp [zerov, D2τPrime, D2τPrimeAll, phi, one]
+  cases τ <;> simp [zerov, D2τPrime, D2τPrimeAll, phi, Bag.collectCost, one]
 
 theorem zero_small_cost_v (τ : Typ .Pr) :
   (zerov (D2τPrime τ)).2 ≤ 2 := by
@@ -235,6 +251,8 @@ theorem plusv_amortises {τ : LTyp} (a b : LinRep τ) :
                       have hτ := ihτ aτ bτ
                       simp [plusv, phi, one] at hτ ⊢
                       omega
+  | array τ ih =>
+      simp [plusv, phi, Bag.collectCost, one] <;> omega
 
 theorem lemma_addLET_plusv {Γ : LEnv} {τ : LTyp}
     (idx : Idx Γ τ) (val : LinRep τ) (env : LEtup Γ) :

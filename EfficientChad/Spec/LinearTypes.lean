@@ -2,11 +2,54 @@ namespace EfficientChad
 
 universe u
 
+/-- Sparse bags used for array cotangents.  This is the paper's
+`Bag` datatype, extended with `array`/`BagArray` for dense batches of
+contributions. -/
+inductive Bag (α : Type u) : Type u where
+  | empty : Bag α
+  | one : α → Bag α
+  | plus : Bag α → Bag α → Bag α
+  | array : List α → Bag α
+  deriving Repr
+
+namespace Bag
+
+/-- Collect a sparse bag to a dense list. -/
+def collect {α : Type u} : Bag α → List α
+  | .empty => []
+  | .one x => [x]
+  | .plus xs ys => collect xs ++ collect ys
+  | .array xs => xs
+
+/-- Amortised collection cost. -/
+def collectCost {α : Type u} : Bag α → Int
+  | .empty => 1
+  | .one _ => 1
+  | .plus xs ys => collectCost xs + collectCost ys - 1
+  | .array xs => 1 + Int.ofNat xs.length
+
+/-- Construction cost stored in a bag. -/
+def constructCost {α : Type u} : Bag α → Int
+  | .empty => 1
+  | .one _ => 1
+  | .plus xs ys => 1 + constructCost xs + constructCost ys
+  | .array xs => 1 + Int.ofNat xs.length
+
+/-- A structural size for sparse bags. -/
+def size {α : Type u} : Bag α → Nat
+  | .empty => 1
+  | .one _ => 1
+  | .plus xs ys => 1 + size xs + size ys
+  | .array xs => 1 + xs.length
+
+end Bag
+
 inductive LTyp : Type where
   | LUn : LTyp
   | LR : LTyp
   | prod : LTyp → LTyp → LTyp
   | sum : LTyp → LTyp → LTyp
+  | array : LTyp → LTyp
   deriving Repr
 
 abbrev LEnv : Type := List LTyp
@@ -26,6 +69,7 @@ def LinRep : LTyp → Type
   | .LR => Float
   | .prod σ τ => Option (LinRep σ × LinRep τ)
   | .sum σ τ => Option (Sum (LinRep σ) (LinRep τ))
+  | .array τ => Bag (Int × LinRep τ)
 
 def LEtup : LEnv → Type
   | [] => Unit
@@ -49,6 +93,7 @@ def zerov : (τ : LTyp) → LinRep τ × Int
   | .LR => ((0.0 : Float), one)
   | .prod _ _ => (none, one)
   | .sum _ _ => (none, one)
+  | .array _ => (Bag.empty, one)
 
 def plusv : (τ : LTyp) → LinRep τ → LinRep τ → LinRep τ × Int
   | .LUn, (), () => ((), one)
@@ -68,6 +113,7 @@ def plusv : (τ : LTyp) → LinRep τ → LinRep τ → LinRep τ × Int
       let z := plusv τ x y
       (some (Sum.inr z.1), one + z.2)
   | .sum _ _, _, _ => (none, one)
+  | .array _, x, y => (Bag.plus x y, one)
 
 def addLET {Γ : LEnv} {τ : LTyp} (idx : Idx Γ τ) (val : LinRep τ) : LEtup Γ → LEtup Γ :=
   match idx with

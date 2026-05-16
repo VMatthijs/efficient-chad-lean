@@ -5,9 +5,12 @@ import EfficientChad.ChadPreservesPrimal
 
 set_option maxHeartbeats 8000000
 set_option linter.unusedVariables false
+set_option linter.unusedSectionVars false
 set_option linter.unnecessarySimpa false
 
 namespace EfficientChad
+
+universe u v
 
 @[irreducible] def th1Bound {Γ : Env .Pr} {τ : Typ .Pr}
     (env : Val .Pr Γ)
@@ -51,8 +54,77 @@ theorem TH1_of_th1Bound
   unfold th1Bound at h
   exact h
 
+/-- Primitive cost laws for the array cases of the *core* TH1 proof.
+
+The scalar branches are proved constructively below.  The array branches are
+kept as the primitive random-access-array/recorded-fold cost model, but the laws
+are no longer whole-program array TH1 assumptions: every method receives the
+recursive TH1 hypotheses for its immediate subterms.  This is the same shape as
+the scalar cases such as `th1_pair_case` and `th1_case_case`, and makes explicit
+that the remaining assumptions are the direct array-work bounds plus affine use
+of the subterm backpropagators. -/
+class CoreArrayCostLaws extends CoreArrayPrimalLaws : Prop where
+  th1_arrayBuild_case {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (n : Term .Pr Γ .Inte)
+      (body : Term .Pr (.Inte :: Γ) τ)
+      (ih_n : ∀ (ctgN : Rep (D2τ (.Inte : Typ .Pr)))
+          (denvinN : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgN denvinN n)
+      (ih_body : ∀ (envI : Val .Pr (.Inte :: Γ))
+          (ctgBody : Rep (D2τ τ))
+          (denvinBody : LEtup (List.map D2τPrime (.Inte :: Γ))),
+        th1Bound envI ctgBody denvinBody body)
+      (ctg : Rep (D2τ (.array τ)))
+      (denvin : LEtup (List.map D2τPrime Γ)) :
+    th1Bound env ctg denvin (Term.arrayBuild n body)
+
+  th1_arrayIndex_case {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (xs : Term .Pr Γ (.array τ))
+      (i : Term .Pr Γ .Inte)
+      (ih_xs : ∀ (ctgXs : Rep (D2τ (.array τ)))
+          (denvinXs : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgXs denvinXs xs)
+      (ih_i : ∀ (ctgI : Rep (D2τ (.Inte : Typ .Pr)))
+          (denvinI : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgI denvinI i)
+      (ctg : Rep (D2τ τ))
+      (denvin : LEtup (List.map D2τPrime Γ)) :
+    th1Bound env ctg denvin (Term.arrayIndex xs i)
+
+  th1_arrayFold_case {Γ : Env .Pr} {τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (body : Term .Pr (.prod τ τ :: Γ) τ)
+      (xs : Term .Pr Γ (.array τ))
+      (ih_body : ∀ (envP : Val .Pr (.prod τ τ :: Γ))
+          (ctgBody : Rep (D2τ τ))
+          (denvinBody : LEtup (List.map D2τPrime (.prod τ τ :: Γ))),
+        th1Bound envP ctgBody denvinBody body)
+      (ih_xs : ∀ (ctgXs : Rep (D2τ (.array τ)))
+          (denvinXs : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgXs denvinXs xs)
+      (ctg : Rep (D2τ τ))
+      (denvin : LEtup (List.map D2τPrime Γ)) :
+    th1Bound env ctg denvin (Term.arrayFold body xs)
+
+variable [CoreArrayCostLaws]
+
 theorem zerov_phi_eq_one (τ : LTyp) : phi τ (zerov τ).1 = (1 : Int) := by
-  cases τ <;> simp [zerov, phi, one]
+  cases τ <;> simp [zerov, phi, Bag.collectCost, one]
+
+theorem bag_collectCost_le_size {α : Type u} (b : Bag α) :
+    Bag.collectCost b ≤ Int.ofNat (Bag.size b) := by
+  induction b with
+  | empty =>
+      simp [Bag.collectCost, Bag.size, one]
+  | one x =>
+      simp [Bag.collectCost, Bag.size, one]
+  | plus xs ys ihx ihy =>
+      simp [Bag.collectCost, Bag.size, one] at ihx ihy ⊢
+      omega
+  | array xs =>
+      simp [Bag.collectCost, Bag.size, intLength, one]
 
 theorem phi_less_size : (τ : Typ .Pr) → (x : LinRep (D2τPrime τ)) →
     phi (D2τPrime τ) x ≤ Int.ofNat (size (D2τPrime τ) x)
@@ -94,6 +166,8 @@ theorem phi_less_size : (τ : Typ .Pr) → (x : LinRep (D2τPrime τ)) →
               have hτ := phi_less_size τ xτ
               simp [D2τPrime, D2τPrimeAll, phi, size, one] at hτ ⊢
               omega
+  | .array τ, x => by
+      simpa [D2τPrime, D2τPrimeAll, phi, size] using bag_collectCost_le_size x
 
 theorem phi_zero_bound (τ : LTyp) (x : LinRep τ) :
     phi τ (zerov τ).1 ≤ phi τ x := by
@@ -1821,6 +1895,21 @@ theorem th1_bound_proof {Γ : Env .Pr}
         (fun ctgστ denvinστ => th1_bound_proof env ctgστ denvinστ scrut)
         (fun env2 ctgρ denvinρ => th1_bound_proof env2 ctgρ denvinρ left)
         (fun env3 ctgρ denvinρ => th1_bound_proof env3 ctgρ denvinρ right)
+        ctg denvin
+  | _, ctg, denvin, .arrayBuild n body =>
+      CoreArrayCostLaws.th1_arrayBuild_case env n body
+        (fun ctgN denvinN => th1_bound_proof env ctgN denvinN n)
+        (fun envI ctgBody denvinBody => th1_bound_proof envI ctgBody denvinBody body)
+        ctg denvin
+  | _, ctg, denvin, .arrayIndex xs i =>
+      CoreArrayCostLaws.th1_arrayIndex_case env xs i
+        (fun ctgXs denvinXs => th1_bound_proof env ctgXs denvinXs xs)
+        (fun ctgI denvinI => th1_bound_proof env ctgI denvinI i)
+        ctg denvin
+  | _, ctg, denvin, .arrayFold body xs =>
+      CoreArrayCostLaws.th1_arrayFold_case env body xs
+        (fun envP ctgBody denvinBody => th1_bound_proof envP ctgBody denvinBody body)
+        (fun ctgXs denvinXs => th1_bound_proof env ctgXs denvinXs xs)
         ctg denvin
 
 theorem th1 : TH1_STATEMENT :=
