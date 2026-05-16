@@ -231,18 +231,5 @@ def arrayScatterPrimitiveCost {α : Type u} {β : Type v}
     (base : ArrayRep α) (pairs : ArrayRep β) : Int :=
   one + intLength base + intLength pairs
 
-variable [CoreArrayCostLaws]
-
-/-- The core language now has arrays directly in `Typ`, `Term`, `eval`, `chad`,
-and the global TH1 statement.  This alias keeps the previous array-module theorem
-name available. -/
-theorem array_complexity : TH1_STATEMENT := th1
-
-/-- Alias exposing the global theorem under the array-specific name used by the
-standalone array development. -/
-theorem array_th1 : TH1_STATEMENT := th1
-
-/-- The executable reverse-mode bound also ranges over array terms. -/
-theorem array_th2 : TH2_STATEMENT := th2
 
 end EfficientChad
