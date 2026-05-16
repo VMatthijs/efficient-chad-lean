@@ -1,6 +1,6 @@
 # Efficient CHAD in Lean
 
-Lean 4 formalization of efficient CHAD: typed source and target languages, evaluation, the CHAD transformation, linear cotangents, primal preservation, and amortized cost bounds.
+A Lean 4 translation (from Agda) of Tom Smeding's efficient CHAD development (https://github.com/tomsmeding/efficient-chad-agda): typed source and target languages, evaluation, the CHAD transformation, linear cotangents, amortized cost bounds, and the main correctness and cost theorems.
 
 ## Build
 
