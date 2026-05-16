@@ -44,9 +44,13 @@ def size {α : Type u} : Bag α → Nat
 
 end Bag
 
+/-- Linear target types.  `Dyn` is the abstract universal cotangent carrier
+used for source function types.  Its concrete representation and encode/decode
+laws are supplied below as explicit assumptions. -/
 inductive LTyp : Type where
   | LUn : LTyp
   | LR : LTyp
+  | Dyn : LTyp
   | prod : LTyp → LTyp → LTyp
   | sum : LTyp → LTyp → LTyp
   | array : LTyp → LTyp
@@ -64,9 +68,36 @@ inductive Idx {α : Type u} : List α → α → Type u where
   | Z {Γ : List α} {τ : α} : Idx (τ :: Γ) τ
   | S {Γ : List α} {τ τ' : α} : Idx Γ τ → Idx (τ' :: Γ) τ
 
+/-- Runtime representation of `Dyn`.
+
+`Dyn` is intentionally untyped: it is the carrier used to stash compact closure
+cotangent environments for higher-order values.  The concrete tree below is only
+an executable placeholder for the semantic model.  The CHAD correctness and cost
+theorems still require the explicit Dyn assumptions in `Spec.lean`, namely
+`dynEncode`, `dynDecode`, their retraction law, and the stated amortised cost
+bounds. -/
+inductive DynRep : Type where
+  | unit : DynRep
+  | int : Int → DynRep
+  | real : Float → DynRep
+  | pair : DynRep → DynRep → DynRep
+  | inl : DynRep → DynRep
+  | inr : DynRep → DynRep
+  | array : List (Int × DynRep) → DynRep
+  deriving Repr, Inhabited
+
+/-- Zero and addition on `Dyn` used by the linear-combination operations.
+The size/cost potential for `Dyn` is deliberately constant in this development;
+the representation-specific encode/decode cost is accounted for separately by
+the Dyn encode/decode cost assumptions in `Spec.lean`. -/
+def dynZero : DynRep := DynRep.unit
+
+def dynPlus (x y : DynRep) : DynRep := DynRep.pair x y
+
 def LinRep : LTyp → Type
   | .LUn => Unit
   | .LR => Float
+  | .Dyn => DynRep
   | .prod σ τ => Option (LinRep σ × LinRep τ)
   | .sum σ τ => Option (Sum (LinRep σ) (LinRep τ))
   | .array τ => Bag (Int × LinRep τ)
@@ -91,6 +122,7 @@ abbrev intLength {α : Type u} (xs : List α) : Int := Int.ofNat xs.length
 def zerov : (τ : LTyp) → LinRep τ × Int
   | .LUn => ((), one)
   | .LR => ((0.0 : Float), one)
+  | .Dyn => (dynZero, one)
   | .prod _ _ => (none, one)
   | .sum _ _ => (none, one)
   | .array _ => (Bag.empty, one)
@@ -98,6 +130,7 @@ def zerov : (τ : LTyp) → LinRep τ × Int
 def plusv : (τ : LTyp) → LinRep τ → LinRep τ → LinRep τ × Int
   | .LUn, (), () => ((), one)
   | .LR, x, y => (((show Float from x) + (show Float from y)), one)
+  | .Dyn, x, y => (dynPlus x y, one)
   | .prod _ _, none, y => (y, one)
   | .prod _ _, x, none => (x, one)
   | .prod σ τ, some (x, y), some (x', y') =>
@@ -132,5 +165,32 @@ def «addLEτ» {Γ : LEnv} {τ : LTyp}
 def «_Eτ!!_» {Γ : LEnv} {τ : LTyp}
     (env : LEtup Γ) (idx : Idx Γ τ) : LinRep τ :=
   getLET env idx
+
+/-- Pointwise zero for a linear environment. -/
+def zeroLEtup : (Γ : LEnv) → LEtup Γ
+  | [] => ()
+  | τ :: Γ => ((zerov τ).1, zeroLEtup Γ)
+
+/-- Pointwise addition for linear-environment tuples. -/
+def addLEtup : (Γ : LEnv) → LEtup Γ → LEtup Γ → LEtup Γ
+  | [], (), () => ()
+  | τ :: Γ, x, y => ((plusv τ x.1 y.1).1, addLEtup Γ x.2 y.2)
+
+/-- A typed injection between linear environments. -/
+abbrev LEnvInj (Γsrc Γdst : LEnv) : Type :=
+  ∀ {δ : LTyp}, Idx Γsrc δ → Idx Γdst δ
+
+/-- A single nonzero contribution in a linear environment. -/
+def singletonLEtup : {Γ : LEnv} → {τ : LTyp} → Idx Γ τ → LinRep τ → LEtup Γ
+  | _τ :: Γ, _, .Z, d => (d, zeroLEtup Γ)
+  | σ :: Γ, τ, .S i, d => ((zerov σ).1, singletonLEtup i d)
+
+/-- Scatter a compact linear-environment tuple into a larger environment. -/
+def scatterLEtup : {Γsrc Γdst : LEnv} → LEnvInj Γsrc Γdst → LEtup Γsrc → LEtup Γdst
+  | [], Γdst, _inj, _d => zeroLEtup Γdst
+  | σ :: Γsrc, Γdst, inj, d =>
+      addLEtup Γdst
+        (singletonLEtup (inj (Idx.Z : Idx (σ :: Γsrc) σ)) d.1)
+        (scatterLEtup (fun {δ} (i : Idx Γsrc δ) => inj (.S i)) d.2)
 
 end EfficientChad

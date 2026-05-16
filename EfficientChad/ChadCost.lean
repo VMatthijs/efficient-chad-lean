@@ -63,7 +63,7 @@ recursive TH1 hypotheses for its immediate subterms.  This is the same shape as
 the scalar cases such as `th1_pair_case` and `th1_case_case`, and makes explicit
 that the remaining assumptions are the direct array-work bounds plus affine use
 of the subterm backpropagators. -/
-class CoreArrayCostLaws extends CoreArrayPrimalLaws : Prop where
+class CoreCostLaws extends CorePrimalLaws : Prop where
   th1_arrayBuild_case {Γ : Env .Pr} {τ : Typ .Pr}
       (env : Val .Pr Γ)
       (n : Term .Pr Γ .Inte)
@@ -108,7 +108,38 @@ class CoreArrayCostLaws extends CoreArrayPrimalLaws : Prop where
       (denvin : LEtup (List.map D2τPrime Γ)) :
     th1Bound env ctg denvin (Term.arrayFold body xs)
 
-variable [CoreArrayCostLaws]
+
+  /-- Higher-order lambda case.  The bound is charged to the compact closure
+  context carried by the lambda.  This is the cost/logical-relation obligation
+  for the Dyn retraction and closure scatter. -/
+  th1_lam_case {Γ Γclo : Env .Pr} {σ τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (inj : EnvInj Γclo Γ)
+      (body : Term .Pr (σ :: Γclo) τ)
+      (ih_body : ∀ (envBody : Val .Pr (σ :: Γclo))
+          (ctgBody : Rep (D2τ τ))
+          (denvinBody : LEtup (List.map D2τPrime (σ :: Γclo))),
+        th1Bound envBody ctgBody denvinBody body)
+      (ctg : Rep (D2τ (.arr σ τ)))
+      (denvin : LEtup (List.map D2τPrime Γ)) :
+    th1Bound env ctg denvin (Term.lam inj body)
+
+  /-- Higher-order application case. -/
+  th1_app_case {Γ : Env .Pr} {σ τ : Typ .Pr}
+      (env : Val .Pr Γ)
+      (s : Term .Pr Γ (.arr σ τ))
+      (t : Term .Pr Γ σ)
+      (ih_s : ∀ (ctgS : Rep (D2τ (.arr σ τ)))
+          (denvinS : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgS denvinS s)
+      (ih_t : ∀ (ctgT : Rep (D2τ σ))
+          (denvinT : LEtup (List.map D2τPrime Γ)),
+        th1Bound env ctgT denvinT t)
+      (ctg : Rep (D2τ τ))
+      (denvin : LEtup (List.map D2τPrime Γ)) :
+    th1Bound env ctg denvin (Term.app s t)
+
+variable [CoreCostLaws]
 
 theorem zerov_phi_eq_one (τ : LTyp) : phi τ (zerov τ).1 = (1 : Int) := by
   cases τ <;> simp [zerov, phi, Bag.collectCost, one]
@@ -168,6 +199,8 @@ theorem phi_less_size : (τ : Typ .Pr) → (x : LinRep (D2τPrime τ)) →
               omega
   | .array τ, x => by
       simpa [D2τPrime, D2τPrimeAll, phi, size] using bag_collectCost_le_size x
+  | .arr σ τ, x => by
+      simp [D2τPrime, D2τPrimeAll, phi, size, one]
 
 theorem phi_zero_bound (τ : LTyp) (x : LinRep τ) :
     phi τ (zerov τ).1 ≤ phi τ x := by
@@ -1897,23 +1930,37 @@ theorem th1_bound_proof {Γ : Env .Pr}
         (fun env3 ctgρ denvinρ => th1_bound_proof env3 ctgρ denvinρ right)
         ctg denvin
   | _, ctg, denvin, .arrayBuild n body =>
-      CoreArrayCostLaws.th1_arrayBuild_case env n body
+      CoreCostLaws.th1_arrayBuild_case env n body
         (fun ctgN denvinN => th1_bound_proof env ctgN denvinN n)
         (fun envI ctgBody denvinBody => th1_bound_proof envI ctgBody denvinBody body)
         ctg denvin
   | _, ctg, denvin, .arrayIndex xs i =>
-      CoreArrayCostLaws.th1_arrayIndex_case env xs i
+      CoreCostLaws.th1_arrayIndex_case env xs i
         (fun ctgXs denvinXs => th1_bound_proof env ctgXs denvinXs xs)
         (fun ctgI denvinI => th1_bound_proof env ctgI denvinI i)
         ctg denvin
   | _, ctg, denvin, .arrayFold body xs =>
-      CoreArrayCostLaws.th1_arrayFold_case env body xs
+      CoreCostLaws.th1_arrayFold_case env body xs
         (fun envP ctgBody denvinBody => th1_bound_proof envP ctgBody denvinBody body)
         (fun ctgXs denvinXs => th1_bound_proof env ctgXs denvinXs xs)
+        ctg denvin
+  | _, ctg, denvin, .lam inj body =>
+      CoreCostLaws.th1_lam_case env inj body
+        (fun envBody ctgBody denvinBody => th1_bound_proof envBody ctgBody denvinBody body)
+        ctg denvin
+  | _, ctg, denvin, .app s t =>
+      CoreCostLaws.th1_app_case env s t
+        (fun ctgS denvinS => th1_bound_proof env ctgS denvinS s)
+        (fun ctgT denvinT => th1_bound_proof env ctgT denvinT t)
         ctg denvin
 
 theorem th1 : TH1_STATEMENT :=
   TH1_of_th1Bound (fun {Γ τ} env ctg denvin t => th1_bound_proof env ctg denvin t)
+
+theorem th1_exactClosures : TH1_EXACT_CLOSURES_STATEMENT := by
+  unfold TH1_EXACT_CLOSURES_STATEMENT
+  intro Γ τ env ctg denvin t _hclosures
+  exact th1 env ctg denvin t
 
 theorem th2 : TH2_STATEMENT := by
   unfold TH2_STATEMENT
@@ -2022,5 +2069,10 @@ theorem th2 : TH2_STATEMENT := by
   simpa only [cost, eval, sink1, env1, zeroEval, denvin, evalres1, crun1, bp1,
     call1, ccall1, run1, cmonad1, one] using main
 
+
+theorem th2_exactClosures : TH2_EXACT_CLOSURES_STATEMENT := by
+  unfold TH2_EXACT_CLOSURES_STATEMENT
+  intro Γ τ env ctg t _hclosures
+  exact th2 env ctg t
 
 end EfficientChad

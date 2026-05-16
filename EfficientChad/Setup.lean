@@ -54,6 +54,8 @@ theorem phi_ge_one (τ : LTyp) (x : LinRep τ) : (1 : Int) ≤ phi τ x := by
       simp [phi, one] <;> omega
   | LR =>
       simp [phi, one] <;> omega
+  | Dyn =>
+      simp [phi, one] <;> omega
   | prod σ τ ihσ ihτ =>
       cases x with
       | none =>
@@ -93,36 +95,36 @@ theorem dprim_cheap {σ τ : Typ .Pr}
   dx.2 - phi (D2τPrime τ) dy + phi (D2τPrime σ) dx.1 ≤ (7 : Int) * y.2 := by
   have hdy := phi_ge_one (D2τPrime τ) dy
   cases op <;>
-    simp [d1Prim, dprimPrime, eval, evalprim, D1τ, D2τPrime, phi, one] at hdy ⊢ <;>
+    simp [d1Prim, dprimPrime, eval, evalprim, D1τ, D1τAll, D2τPrime, phi, one] at hdy ⊢ <;>
     omega
 
 theorem eval_d1prim {σ τ : Typ .Pr} (op : Primop .Pr σ τ) (x : Rep σ) :
   evalprim (d1Prim op) (primal σ x) = primal τ (evalprim op x) := by
   cases op with
   | ADD =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | MUL =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | NEG =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | LIT lit =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | IADD =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | IMUL =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | INEG =>
-      simp [d1Prim, evalprim, primal]
+      simp [d1Prim, evalprim, primal, D1τ, D1τAll]
   | SIGN =>
       dsimp [d1Prim, evalprim]
       by_cases hneg : x < 0.0
-      · simp [hneg, primal, D1τ, dut, dutAll, Rep]
+      · simp [hneg, primal, D1τ, D1τAll, dut, dutAll, Rep]
         rfl
-      · simp [hneg, primal, D1τ, dut, dutAll, Rep]
+      · simp [hneg, primal, D1τ, D1τAll, dut, dutAll, Rep]
         by_cases hpos : 0.0 < x
-        · simp [hpos, primal, D1τ, dut, dutAll, Rep]
+        · simp [hpos, primal, D1τ, D1τAll, dut, dutAll, Rep]
           rfl
-        · simp [hpos, primal, D1τ, dut, dutAll, Rep]
+        · simp [hpos, primal, D1τ, D1τAll, dut, dutAll, Rep]
           rfl
 
 theorem zero_small_phi {Γ : Env .Du} (env : Val .Du Γ) (τ : Typ .Pr) :
@@ -189,6 +191,8 @@ theorem plusv_amortises {τ : LTyp} (a b : LinRep τ) :
       cases b
       simp [plusv, phi, one] <;> omega
   | LR =>
+      simp [plusv, phi, one] <;> omega
+  | Dyn =>
       simp [plusv, phi, one] <;> omega
   | prod σ τ ihσ ihτ =>
       cases a with
